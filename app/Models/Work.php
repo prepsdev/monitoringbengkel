@@ -16,6 +16,7 @@ class Work extends Model
         'status',
         'note',
         'job_desc',
+        'estimated_end_time',
     ];
 
     public function technicians()

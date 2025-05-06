@@ -74,7 +74,9 @@
                                                         <label for="technicians" class="form-label">Pilih Teknisi</label>
                                                         <select class="form-select select2-tech" name="technicians[]"
                                                             multiple required>
-                                                            @foreach ($technicians->where('status', 'Aktif') as $technician)
+                                                            @foreach ($technicians->filter(function ($technician) {
+            return $technician->status === 'Aktif' && !$technician->works->contains('status', 'Dalam Pengerjaan');
+        }) as $technician)
                                                                 <option value="{{ $technician->id }}">
                                                                     {{ $technician->name }} (ID: {{ $technician->id }})
                                                                 </option>
@@ -143,6 +145,7 @@
                                     <th>Plat Nomor</th>
                                     <th>Jenis Kendaraan</th>
                                     <th>Jenis Pekerjaan</th>
+                                    <th>Estimasi Selesai</th>
                                     <th>Waktu</th>
                                     <th>Tanggal</th>
                                     <th>Status</th>
@@ -156,9 +159,10 @@
 
                                     @if ($inProgressWorks->isNotEmpty())
                                         @foreach ($inProgressWorks as $work)
-                                            <tr>
+                                            <tr class="{{ $work->remaining_seconds <= 30 ? 'bg-danger text-white' : '' }}">
                                                 <td>
                                                     <a href="#" data-bs-toggle="modal"
+                                                        class="btn btn-link btn-sm text-white "
                                                         data-bs-target="#updateStatusModal{{ $technician->id }}">
                                                         {{ $technician->name }}
                                                     </a>
@@ -167,7 +171,14 @@
                                                 <td>{{ $work->plat_nomor }}</td>
                                                 <td>{{ $work->jenis_kendaraan }}</td>
                                                 <td>{{ $work->jenis_pekerjaan }}</td>
-                                                <td>{{ $work->waktu }}</td>
+                                                <td>{{ $work->estimated_end_time ? $work->estimated_end_time->format('Y-m-d H:i:s') : 'N/A' }}
+                                                </td>
+                                                <td>
+                                                    <span class="countdown" id="countdown-{{ $work->id }}"
+                                                        data-remaining-seconds="{{ $work->remaining_seconds }}">
+                                                        {{ gmdate('H:i:s', $work->remaining_seconds) }}
+                                                    </span>
+                                                </td>
                                                 <td>{{ $work->tanggal }}</td>
                                                 <td>
                                                     @if ($work->status === 'Dalam Pengerjaan')
@@ -258,8 +269,8 @@
                                                                     <textarea class="form-control" name="job_desc" rows="3" required>{{ $work->job_desc }}</textarea>
                                                                 </div>
                                                                 <div class="mb-3">
-                                                                    <label for="waktu" class="form-label">Setting Ulang
-                                                                        Total Waktu</label>
+                                                                    <label for="waktu" class="form-label">Tambahan
+                                                                        Waktu</label>
                                                                     <input type="time" class="form-control"
                                                                         name="waktu" value="{{ $work->waktu }}"
                                                                         required>
@@ -279,8 +290,7 @@
                                                                 <div class="mb-3">
                                                                     <label for="note" class="form-label">Catatan
                                                                         Pekerjaan</label>
-                                                                    <textarea class="form-control" name="note" rows="3"
-                                                                        required>{{ $work->note }}</textarea>
+                                                                    <textarea class="form-control" name="note" rows="3" required>{{ $work->note }}</textarea>
                                                                 </div>
                                                             </div>
                                                             <div class="modal-footer">
@@ -402,6 +412,65 @@
                     width: '100%',
                     placeholder: 'Pilih Teknisi'
                 });
+            });
+        </script>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                @foreach ($technicians as $technician)
+                    @foreach ($technician->works as $work)
+                        (function() {
+                            // Use a self-invoking function to create a new scope for each iteration
+                            let countdownElement = document.getElementById('countdown-{{ $work->id }}');
+
+                            if (countdownElement) {
+                                let remainingSeconds = parseInt(countdownElement.getAttribute(
+                                    'data-remaining-seconds'));
+                                const rowElement = countdownElement.closest('tr'); // Get the closest <tr> element
+
+                                // Function to format seconds to H:i:s
+                                function formatTime(seconds) {
+                                    let hours = Math.floor(seconds / 3600);
+                                    let minutes = Math.floor((seconds % 3600) / 60);
+                                    let secs = seconds % 60;
+
+                                    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                                }
+
+                                // Function to apply the warning color when remaining time is under 30 minutes
+                                function updateRowColor() {
+                                    if (remainingSeconds <= 1800) { // 1800 seconds = 30 minutes
+                                        rowElement.classList.add('bg-danger', 'text-white');
+                                    } else {
+                                        rowElement.classList.remove('bg-danger', 'text-white');
+                                    }
+                                }
+
+                                // Update the countdown every second
+                                const countdownInterval = setInterval(function() {
+                                    remainingSeconds -= 1;
+
+                                    // Update the displayed countdown in H:i:s format
+                                    countdownElement.innerHTML = formatTime(remainingSeconds);
+
+                                    // Apply or remove color warning
+                                    updateRowColor();
+
+                                    // If the countdown has ended, stop the interval and update text
+                                    if (remainingSeconds <= 0) {
+                                        clearInterval(countdownInterval);
+                                        countdownElement.innerHTML = 'Time is up!';
+                                        rowElement.classList.remove('bg-danger', 'text-white');
+                                    }
+                                }, 1000);
+
+                                // Initial color check
+                                updateRowColor();
+                            } else {
+                                console.log('Countdown element not found for work ID: {{ $work->id }}');
+                            }
+                        })(); // End of self-invoking function
+                    @endforeach
+                @endforeach
             });
         </script>
     @endpush
